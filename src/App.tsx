@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { FileText, Download, Search, AlertCircle, ChevronDown, ChevronRight, Info, TriangleAlert, Layers, FileCheckIcon, AlertTriangle, ArrowUpRight, Box } from 'lucide-react'
+import { useState, useEffect } from 'react';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { AlertTriangle, Info, TrendingUp, FileText, Download, Search, AlertCircle, ChevronDown, ChevronRight, Layers, FileCheckIcon, ArrowUpRight, Box } from 'lucide-react';
 import './App.css'
 
 interface ComponentData {
@@ -36,12 +37,51 @@ function App() {
   const [componentData, setComponentData] = useState<ComponentData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isNotLibraryFile, setIsNotLibraryFile] = useState(false);
   const [figmaToken, setFigmaToken] = useState('');
   const [fileKey, setFileKey] = useState('');
   const [showTokenTooltip, setShowTokenTooltip] = useState(false);
   const [showFileKeyTooltip, setShowFileKeyTooltip] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [isInventoryCollapsed, setIsInventoryCollapsed] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({ current: 0, total: 0, stage: '' });
+  const [isEnterpriseMode, setIsEnterpriseMode] = useState(false);
+  const [enterpriseAnalytics, setEnterpriseAnalytics] = useState<{
+    totalInsertions: number;
+    weeklyInsertions: number;
+    activeTeams: number;
+    adoptionRate: number;
+    avgUsageScore: number;
+    usageTrends: Array<{
+      week: string;
+      date: string;
+      insertions: number;
+      detachments: number;
+    }>;
+    rawData?: {
+      teamUsages?: {
+        rows: Array<{
+          team_name: string;
+          insertions: number;
+          detachments: number;
+          week?: string;
+        }>;
+      };
+    };
+    isLoading: boolean;
+    error: string | null;
+    isEnterpriseRequired: boolean;
+  }>({
+    totalInsertions: 0,
+    weeklyInsertions: 0,
+    activeTeams: 0,
+    adoptionRate: 0,
+    avgUsageScore: 0,
+    usageTrends: [],
+    isLoading: false,
+    error: null,
+    isEnterpriseRequired: false
+  });
 
   // Auto-expiration clearing function for tokens
   useEffect(() => {
@@ -359,6 +399,7 @@ function App() {
 
     setIsLoading(true)
     setError('')
+    setIsNotLibraryFile(false)
     
     try {
       const response = await fetch('/api/analyze', {
@@ -383,6 +424,24 @@ function App() {
       console.log('First result:', data.results?.[0])
       console.log('First component data:', data.results?.[0]?.components?.[0])
       console.log('Component thumbnail URLs:', data.results?.[0]?.components?.slice(0, 5).map((c: any) => ({ name: c.name, thumbnail_url: c.thumbnail_url })))
+
+      // Check if any files returned components
+      const hasComponents = data.results.some((fileResult: any) => 
+        fileResult.components && fileResult.components.length > 0
+      )
+      
+      // If no components found, check if it's because files are not libraries
+      if (!hasComponents) {
+        const allFilesEmpty = data.results.every((fileResult: any) => 
+          !fileResult.components || fileResult.components.length === 0
+        )
+        
+        if (allFilesEmpty) {
+          setIsNotLibraryFile(true)
+          setIsLoading(false)
+          return
+        }
+      }
 
       // Transform the API response to match our component data structure
       const transformedData: ComponentData[] = []
@@ -410,11 +469,103 @@ function App() {
       const enhancedData = await enhanceComponentsWithContrastAnalysis(transformedData)
       
       setComponentData(enhancedData)
+      
+      // Fetch enterprise analytics if enterprise mode is enabled
+      if (isEnterpriseMode) {
+        await fetchEnterpriseAnalytics(fileKey.split(',')[0].trim()) // Use first file key for analytics
+      }
+      
       setIsLoading(false)
     } catch (error) {
       console.error('Analysis error:', error)
       setError(error instanceof Error ? error.message : 'Failed to analyze components')
       setIsLoading(false)
+    }
+  }
+
+  // Function to fetch real enterprise analytics data
+  const fetchEnterpriseAnalytics = async (primaryFileKey: string) => {
+    setEnterpriseAnalytics(prev => ({ ...prev, isLoading: true, error: null }))
+    
+    try {
+      console.log('Fetching enterprise analytics for file:', primaryFileKey)
+      
+      // Fetch both summary and trends data in parallel
+      const [summaryResponse, trendsResponse] = await Promise.allSettled([
+        fetch('/api/analytics/enterprise-summary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            figmaToken,
+            fileKey: primaryFileKey
+          }),
+        }),
+        fetch('/api/analytics/usage-trends', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            figmaToken,
+            fileKey: primaryFileKey
+          }),
+        })
+      ])
+
+      if (summaryResponse.status === 'rejected') {
+        throw new Error('Network error fetching enterprise summary')
+      }
+      
+      if (!summaryResponse.value.ok) {
+        const errorData = await summaryResponse.value.json()
+        throw new Error(errorData.error || `HTTP error! status: ${summaryResponse.value.status}`)
+      }
+
+      const summaryData = await summaryResponse.value.json()
+      console.log('Enterprise analytics response:', summaryData)
+
+      let trendsData = { trends: [] }
+      if (trendsResponse.status === 'fulfilled' && trendsResponse.value.ok) {
+        trendsData = await trendsResponse.value.json()
+        console.log('Usage trends response:', trendsData)
+        console.log('Individual trend values:', trendsData.trends.map((t: any) => `${t.week}: ${t.insertions} insertions, ${t.detachments} detachments`))
+      } else {
+        console.log('Usage trends failed, using empty data')
+      }
+
+      setEnterpriseAnalytics({
+        totalInsertions: summaryData.totalInsertions || 0,
+        weeklyInsertions: summaryData.weeklyInsertions || 0,
+        activeTeams: summaryData.activeTeams || 0,
+        adoptionRate: summaryData.adoptionRate || 0,
+        avgUsageScore: summaryData.avgUsageScore || 0,
+        usageTrends: trendsData.trends || [],
+        rawData: summaryData.rawData,
+        isLoading: false,
+        error: null,
+        isEnterpriseRequired: summaryData.isEnterpriseRequired || false
+      })
+
+      // Log any errors from individual API calls
+      if (summaryData.errors && summaryData.errors.length > 0) {
+        console.warn('Enterprise analytics partial errors:', summaryData.errors)
+      }
+
+    } catch (error) {
+      console.error('Enterprise analytics error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch enterprise analytics'
+      const isEnterpriseRequired = errorMessage.includes('Limited by Figma plan') || 
+                                   errorMessage.includes('Invalid scope') ||
+                                   errorMessage.includes('403')
+
+      setEnterpriseAnalytics(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+        isEnterpriseRequired
+      }))
     }
   }
 
@@ -497,6 +648,48 @@ function App() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Enterprise Mode Toggle */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-left">
+              <svg className="h-5 w-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <h3 className="text-sm font-semibold text-gray-900">Enterprise Analytics</h3>
+              <span className="text-xs text-gray-600">Enable advanced usage analytics with Figma Library Analytics API</span>
+            </div>
+            <button 
+              type="button"
+              onClick={() => {
+                setIsEnterpriseMode(!isEnterpriseMode);
+                // Auto-collapse inventory when enterprise mode is enabled
+                if (!isEnterpriseMode) {
+                  setIsInventoryCollapsed(true);
+                }
+              }}
+              className={`relative inline-flex items-center cursor-pointer w-11 h-6 rounded-full transition-colors ${
+                isEnterpriseMode ? 'bg-purple-600' : 'bg-gray-200'
+              }`}
+            >
+              <div className={`absolute top-0.5 bg-white w-5 h-5 rounded-full transition-transform ${
+                isEnterpriseMode ? 'left-5' : 'left-0.5'
+              }`} />
+            </button>
+          </div>
+          {isEnterpriseMode && (
+            <div className="mt-3 text-xs text-purple-700 bg-purple-100 p-2 rounded text-left">
+              <div className="flex items-start gap-2">
+                <svg className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-left">
+                  <strong>Enterprise Mode Enabled: </strong>
+                  This will access real usage analytics, team insights, and cross-file adoption data using the Figma Library Analytics API. Requires Figma Enterprise plan.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
         {/* Input Form */}
         <div className="card-enhanced p-6 mb-8">
           <div className="mb-4 space-y-3">
@@ -606,6 +799,22 @@ function App() {
             </div>
           )}
 
+          {isNotLibraryFile && (
+            <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-md mb-4">
+              <AlertCircle className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+              <div className="text-left">
+                <h4 className="text-sm font-medium text-orange-800 mb-1">No components found in this file</h4>
+                <p className="text-sm text-orange-700 mb-2">
+                  This could mean: (1) The file contains no published components or component sets, (2) The file is not a design system or component library, 
+                  (3) Components exist but are not published to a team library. Try analyzing a file that contains published components or component sets.
+                </p>
+                <div className="text-xs text-orange-600">
+                  <strong>Note:</strong> This tool analyzes published library components only. Regular design files without published components will show no results.
+                </div>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={handleAnalyze}
             disabled={isLoading}
@@ -649,7 +858,7 @@ function App() {
 
           {/* Processing Time Notice */}
           <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md mt-4 text-left">
-            <TriangleAlert className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+            <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-yellow-800">
               <p><strong>Processing Time Notice</strong></p>
               <p className="mt-1">
@@ -718,10 +927,483 @@ function App() {
               </button>
             </div>
 
+            {/* Enterprise Analytics Section - only shown when enterprise mode is enabled */}
+            {isEnterpriseMode && componentData.length > 0 && (
+              <div className="mb-8">
+                {/* Analytics Data Notice */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-left">
+                  <div className="flex items-start gap-3">
+                    <svg className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-yellow-900 mb-2">Analytics Data Notice</h4>
+                      <p className="text-sm text-gray-600 mb-3">
+                        <strong>Data Source:</strong> Figma Library Analytics API with 30-day lookback period. Numbers and team rankings may differ from Figma's native library analytics due to:
+                      </p>
+                      <ul className="text-sm text-gray-600 space-y-1 mb-3 ml-4">
+                        <li>• Different calculation methods (cumulative vs period-specific queries)</li>
+                        <li>• API grouping differences (per-component vs per-instance vs per-team)</li>
+                        <li>• Date range handling and timezone variations</li>
+                        <li>• Team adoption aggregation across multiple files/components</li>
+                      </ul>
+                      <p className="text-sm text-gray-600 mb-3">
+                        <strong>Recommendation:</strong> Use these analytics alongside Figma's native library insights for a comprehensive view of your component library health and adoption patterns.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          id="copy-api-data-btn"
+                          onClick={async () => {
+                            const dataToCopy = {
+                              summary: {
+                                totalInsertions: enterpriseAnalytics.totalInsertions,
+                                weeklyInsertions: enterpriseAnalytics.weeklyInsertions,
+                                activeTeams: enterpriseAnalytics.activeTeams,
+                                adoptionRate: enterpriseAnalytics.adoptionRate,
+                                avgUsageScore: enterpriseAnalytics.avgUsageScore
+                              },
+                              usageTrends: enterpriseAnalytics.usageTrends,
+                              rawData: enterpriseAnalytics.rawData,
+                              exportedAt: new Date().toISOString()
+                            };
+                            
+                            try {
+                              await navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2));
+                              // Show temporary checkmark next to the link
+                              const checkmark = document.getElementById('copy-checkmark');
+                              if (checkmark) {
+                                // Clear any existing timeout
+                                const existingTimeout = (checkmark as any)._timeout;
+                                if (existingTimeout) {
+                                  clearTimeout(existingTimeout);
+                                }
+                                
+                                // Show checkmark using Tailwind classes
+                                checkmark.classList.remove('hidden');
+                                checkmark.classList.add('inline-block');
+                                
+                                // Hide after 2 seconds
+                                (checkmark as any)._timeout = setTimeout(() => {
+                                  checkmark.classList.remove('inline-block');
+                                  checkmark.classList.add('hidden');
+                                  (checkmark as any)._timeout = null;
+                                }, 2000);
+                              }
+                            } catch (err) {
+                              console.error('Failed to copy to clipboard:', err);
+                            }
+                          }}
+                          className="text-sm text-yellow-700 underline hover:text-yellow-900 transition-colors"
+                        >
+                          Copy Raw API Data
+                        </button>
+                        <svg 
+                          id="copy-checkmark"
+                          className="h-4 w-4 text-green-600 hidden" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"></path>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Enhanced Enterprise Summary Cards - using real Library Analytics API data */}
+                {enterpriseAnalytics.isLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+                        <div className="animate-pulse">
+                          <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                          <div className="h-8 bg-gray-200 rounded w-1/2 mb-1"></div>
+                          <div className="h-3 bg-gray-200 rounded w-full"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : enterpriseAnalytics.error ? (
+                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h3 className="text-sm font-medium text-red-800">Enterprise Analytics Error</h3>
+                        <p className="text-sm text-red-700 mt-1">{enterpriseAnalytics.error}</p>
+                        {enterpriseAnalytics.isEnterpriseRequired && (
+                          <p className="text-xs text-red-600 mt-2">
+                            <strong>Note:</strong> Library Analytics API requires a Figma Enterprise plan and a token with library_analytics:read scope.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Main Analytics Cards - 4 cards in a row */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Total Insertions</p>
+                            <p className="text-2xl font-bold text-gray-800">
+                              {enterpriseAnalytics.totalInsertions.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Last 30 days</p>
+                          </div>
+                          <svg className="h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Activity this week</p>
+                            <p className="text-2xl font-bold text-gray-800">
+                              {enterpriseAnalytics.weeklyInsertions.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Current week</p>
+                          </div>
+                          <svg className="h-5 w-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Active Teams</p>
+                            <p className="text-2xl font-bold text-gray-800">{enterpriseAnalytics.activeTeams}</p>
+                            <p className="text-xs text-gray-500 mt-1">Using this library</p>
+                          </div>
+                          <svg className="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Adoption Rate</p>
+                            <p className="text-2xl font-bold text-gray-800">{enterpriseAnalytics.adoptionRate}%</p>
+                            <p className="text-xs text-gray-500 mt-1">Components with usage</p>
+                          </div>
+                          <svg className="h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Average Usage Score - Dedicated Section */}
+                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <svg className="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                          <h3 className="text-lg font-semibold text-gray-900">Average Usage Score</h3>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-3xl font-bold text-purple-600">{enterpriseAnalytics.avgUsageScore}</p>
+                          <p className="text-sm text-gray-500">Usage intensity metric</p>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="text-sm font-medium text-gray-900 mb-3">Score Criteria</h4>
+                        <div className="grid grid-cols-2 gap-6 text-sm">
+                          <div className="text-left">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                              <span className="font-medium text-gray-700">8.0 - 10.0: Excellent</span>
+                            </div>
+                            <p className="text-gray-600 mb-4">Components average 80+ instances each across files</p>
+                            
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                              <span className="font-medium text-gray-700">5.0 - 7.9: Good</span>
+                            </div>
+                            <p className="text-gray-600">Components average 50-79 instances each</p>
+                          </div>
+                          <div className="text-left">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                              <span className="font-medium text-gray-700">2.0 - 4.9: Moderate</span>
+                            </div>
+                            <p className="text-gray-600 mb-4">Components average 20-49 instances each</p>
+                            
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                              <span className="font-medium text-gray-700">0.0 - 1.9: Low</span>
+                            </div>
+                            <p className="text-gray-600">Components average less than 20 instances each</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-4 text-left">
+                          Higher scores indicate components are heavily reused across many files, showing strong design system adoption.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Enterprise Charts Placeholder */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  {/* Usage Trends Chart */}
+                  <div className="card-enhanced p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Usage Trends (Last 4 Weeks)</h3>
+                      <div className="flex items-center gap-4 text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          <span className="text-gray-600">Insertions</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                          <span className="text-gray-600">Detachments</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {enterpriseAnalytics.usageTrends.length > 0 ? (
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={enterpriseAnalytics.usageTrends.map(trend => ({
+                              week: trend.week,
+                              date: new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                              insertions: trend.insertions,
+                              detachments: trend.detachments
+                            }))}
+                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis 
+                              dataKey="date" 
+                              tick={{ fontSize: 12, fill: '#6b7280' }}
+                              axisLine={{ stroke: '#e5e7eb' }}
+                              tickLine={{ stroke: '#e5e7eb' }}
+                            />
+                            <YAxis 
+                              tick={{ fontSize: 12, fill: '#6b7280' }}
+                              axisLine={{ stroke: '#e5e7eb' }}
+                              tickLine={{ stroke: '#e5e7eb' }}
+                            />
+                            <Line 
+                              type="linear" 
+                              dataKey="insertions" 
+                              stroke="#3b82f6" 
+                              strokeWidth={3}
+                              dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                              activeDot={false}
+                              connectNulls={false}
+                            />
+                            <Line 
+                              type="linear" 
+                              dataKey="detachments" 
+                              stroke="#ef4444" 
+                              strokeWidth={3}
+                              dot={{ fill: '#ef4444', strokeWidth: 2, r: 4 }}
+                              activeDot={false}
+                              connectNulls={false}
+                            />
+                            <Tooltip 
+                              content={({ active, payload, label }) => {
+                                if (active && payload && payload.length > 0) {
+                                  // Debug: log all payload data
+                                  console.log('Tooltip payload:', payload.map(p => ({ dataKey: p.dataKey, value: p.value })));
+                                  
+                                  // Check if we have both data points
+                                  const insertionsData = payload.find(p => p.dataKey === 'insertions');
+                                  const detachmentsData = payload.find(p => p.dataKey === 'detachments');
+                                  
+                                  if (!insertionsData && !detachmentsData) return null;
+                                  
+                                  // For now, show both until we can debug the proximity issue
+                                  return (
+                                    <div style={{
+                                      backgroundColor: '#1f2937',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      color: '#ffffff',
+                                      fontSize: '12px',
+                                      padding: '8px 12px'
+                                    }}>
+                                      <p style={{ color: '#ffffff', margin: 0, marginBottom: '4px' }}>
+                                        Week: {label}
+                                      </p>
+                                      {insertionsData && (
+                                        <p style={{ color: '#3b82f6', margin: 0 }}>
+                                          Insertions: {insertionsData.value}
+                                        </p>
+                                      )}
+                                      {detachmentsData && (
+                                        <p style={{ color: '#ef4444', margin: 0 }}>
+                                          Detachments: {detachmentsData.value}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                        
+                        {/* Summary stats */}
+                        <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between text-sm">
+                          <div className="text-gray-600">
+                            Total: <span className="font-medium text-blue-600">{enterpriseAnalytics.usageTrends.reduce((sum, t) => sum + t.insertions, 0)} insertions</span>
+                          </div>
+                          <div className="text-gray-600">
+                            <span className="font-medium text-red-600">{enterpriseAnalytics.usageTrends.reduce((sum, t) => sum + t.detachments, 0)} detachments</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-64 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center">
+                        <div className="text-center text-gray-500">
+                          <TrendingUp className="h-8 w-8 mx-auto mb-2" />
+                          <p className="text-sm">Loading usage trends...</p>
+                          <p className="text-xs text-gray-400">Fetching weekly data</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Team Adoption Chart */}
+                  <div className="card-enhanced p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Team Adoption</h3>
+                      <span className="text-xs text-gray-500">{enterpriseAnalytics.activeTeams} teams using components</span>
+                    </div>
+                    
+                    {enterpriseAnalytics.rawData?.teamUsages?.rows ? (
+                      <div className="space-y-3">
+                        {/* Process and display team data from API */}
+                        {(() => {
+                          // Debug: log the raw data
+                          console.log('Team adoption raw data:', enterpriseAnalytics.rawData?.teamUsages);
+                          console.log('Raw team rows:', enterpriseAnalytics.rawData.teamUsages.rows);
+                          
+                          // Group team data by team name and calculate totals
+                          const teamData: Record<string, { insertions: number; detachments: number }> = enterpriseAnalytics.rawData.teamUsages.rows
+                            .filter((row: any) => {
+                              console.log('Processing team row:', row);
+                              return row.team_name && !row.team_name.includes('not visible') && !row.team_name.includes('<Drafts>');
+                            })
+                            .reduce((acc: Record<string, { insertions: number; detachments: number }>, row: any) => {
+                              // Keep original team name to match Figma native display
+                              const teamName = row.team_name;
+                              console.log(`Team: ${teamName}, Usages: ${row.usages}, File: ${row.file_name}`);
+                              if (!acc[teamName]) {
+                                acc[teamName] = { insertions: 0, detachments: 0 };
+                              }
+                              // Use usages as insertions since teamUsages API doesn't have insertions/detachments breakdown
+                              acc[teamName].insertions += row.usages || 0;
+                              acc[teamName].detachments += 0; // teamUsages doesn't track detachments
+                              console.log(`Running total for ${teamName}: ${acc[teamName].insertions}`);
+                              return acc;
+                            }, {});
+                          
+                          console.log('Final processed team data:', teamData);
+                          
+                          // Sort by usage and log the sorting
+                          const teamEntries = Object.entries(teamData);
+                          console.log('Team entries before sorting:', teamEntries);
+                          const sortedEntries = teamEntries.sort(([,a], [,b]) => b.insertions - a.insertions);
+                          console.log('Team entries after sorting:', sortedEntries);
+                          
+                          // Sort teams by total insertions and take top 6
+                          const sortedTeams = Object.entries(teamData)
+                            .map(([name, data]) => ({ name, insertions: data.insertions, detachments: data.detachments }))
+                            .sort((a, b) => b.insertions - a.insertions)
+                            .slice(0, 6);
+                          
+                          const maxInsertions = Math.max(...sortedTeams.map(t => t.insertions));
+                          
+                          return sortedTeams.map((team, index) => {
+                            const percentage = maxInsertions > 0 ? Math.round((team.insertions / maxInsertions) * 100) : 0;
+                            const adoptionRate = Math.round((team.insertions / enterpriseAnalytics.totalInsertions) * 100);
+                            
+                            return (
+                              <div key={team.name} className="flex items-center justify-between">
+                                <div className="flex items-center gap-3 flex-1">
+                                  <span className="text-sm font-medium text-gray-600 w-4">{index + 1}.</span>
+                                  <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-sm font-medium text-gray-900">{team.name}</span>
+                                      <div className="flex items-center gap-4 text-xs text-gray-600">
+                                        <span>{team.insertions} inserts</span>
+                                        <span>{adoptionRate}%</span>
+                                      </div>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                      <div 
+                                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                        style={{ width: `${percentage}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                        
+                        {/* Summary footer */}
+                        <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between text-sm">
+                          <div className="text-gray-600">
+                            <span className="font-medium">{enterpriseAnalytics.activeTeams} active teams</span>
+                          </div>
+                          <div className="text-gray-600">
+                            <span className="font-medium">{enterpriseAnalytics.adoptionRate}% adoption rate</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-48 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center">
+                        <div className="text-center text-gray-500">
+                          <svg className="h-8 w-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                          <p className="text-sm">Team adoption data loading...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Component Inventory Table */}
             <div className="card-enhanced overflow-hidden mb-8">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">Component Inventory</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Component Inventory</h3>
+                  {isEnterpriseMode && componentData.length > 0 && (
+                    <button
+                      onClick={() => setIsInventoryCollapsed(!isInventoryCollapsed)}
+                      className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                    >
+                      {isInventoryCollapsed ? (
+                        <>
+                          <ChevronRight className="h-4 w-4" />
+                          Expand
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4" />
+                          Collapse
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
                 {componentData.length > 0 && (
                   <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md text-left">
                     <div className="flex items-start gap-2">
@@ -768,7 +1450,7 @@ function App() {
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : !isInventoryCollapsed ? (
                 <div className="overflow-x-auto">
                   <table className="table-enhanced">
                   <thead>
@@ -906,6 +1588,13 @@ function App() {
                   </tbody>
                   </table>
                 </div>
+              ) : (
+                <div className="px-6 py-8 text-center text-gray-500">
+                  <div className="flex items-center justify-center gap-2">
+                    <ChevronRight className="h-4 w-4" />
+                    <span className="text-sm">Component inventory collapsed</span>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -964,7 +1653,7 @@ function App() {
                     <p className="text-2xl font-bold text-gray-300">--</p>
                   </div>
                   <div className="p-2 bg-gray-100 rounded-lg">
-                    <TriangleAlert className="h-5 w-5 text-gray-400" />
+                    <AlertTriangle className="h-5 w-5 text-red-500" />
                   </div>
                 </div>
               </div>

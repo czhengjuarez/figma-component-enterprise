@@ -1161,8 +1161,8 @@ const HTML_TEMPLATE = `<!doctype html>
                 )
               ),
               
-              // Enterprise Mode Toggle - HIDDEN for standard deployment
-              false && React.createElement('div', { className: 'mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg' },
+              // Enterprise Mode Toggle - ENABLED for development
+              React.createElement('div', { className: 'mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg' },
                 React.createElement('div', { className: 'flex items-center justify-between' },
                   React.createElement('div', { className: 'flex items-center gap-3' },
                     React.createElement('div', { className: 'flex items-center gap-2' },
@@ -1396,12 +1396,12 @@ const HTML_TEMPLATE = `<!doctype html>
                       React.createElement('p', { className: 'text-2xl font-bold text-gray-800' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           componentData[0].enterpriseAnalytics.totalInsertions.toLocaleString() : 
-                          'N/A'
+                          '2,847'
                       ),
                       React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           'Last 30 days' : 
-                          'Enterprise plan required'
+                          'Mock data - Enterprise plan required'
                       )
                     ),
                     React.createElement('svg', { className: 'h-5 w-5 text-blue-500', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' },
@@ -1416,12 +1416,12 @@ const HTML_TEMPLATE = `<!doctype html>
                       React.createElement('p', { className: 'text-2xl font-bold text-gray-800' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           componentData[0].enterpriseAnalytics.activeTeams : 
-                          'N/A'
+                          '12'
                       ),
                       React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           'Using components' : 
-                          'Enterprise plan required'
+                          'Mock data - Enterprise plan required'
                       )
                     ),
                     React.createElement('svg', { className: 'h-5 w-5 text-green-500', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' },
@@ -1436,12 +1436,12 @@ const HTML_TEMPLATE = `<!doctype html>
                       React.createElement('p', { className: 'text-2xl font-bold text-gray-800' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           componentData[0].enterpriseAnalytics.adoptionRate + '%' : 
-                          'N/A'
+                          '78%'
                       ),
                       React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           'Components in use' : 
-                          'Enterprise plan required'
+                          'Mock data - Enterprise plan required'
                       )
                     ),
                     React.createElement('svg', { className: 'h-5 w-5 text-purple-500', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' },
@@ -1456,12 +1456,12 @@ const HTML_TEMPLATE = `<!doctype html>
                       React.createElement('p', { className: 'text-2xl font-bold text-gray-800' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           componentData[0].enterpriseAnalytics.avgUsageScore : 
-                          'N/A'
+                          '8.4'
                       ),
                       React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 
                         componentData.length > 0 && componentData[0].enterpriseAnalytics ? 
                           'Out of 10' : 
-                          'Enterprise plan required'
+                          'Mock data - Enterprise plan required'
                       )
                     ),
                     React.createElement('svg', { className: 'h-5 w-5 text-purple-500', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' },

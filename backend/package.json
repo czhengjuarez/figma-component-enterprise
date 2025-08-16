@@ -1,14 +1,14 @@
 {
-  "name": "figma-component-inventory-backend",
+  "name": "figma-component-enterprise-backend",
   "version": "1.0.0",
-  "description": "Backend API for Figma Component Inventory & Health Reporter",
+  "description": "Enterprise Backend API for Figma Component Health Analytics with WCAG Compliance",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["figma", "components", "design-system", "api"],
+  "keywords": ["figma", "components", "design-system", "api", "enterprise", "analytics", "wcag", "accessibility"],
   "author": "",
   "license": "ISC",
   "dependencies": {

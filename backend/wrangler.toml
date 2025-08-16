@@ -1,6 +1,10 @@
-name = "figma-component-health"
-main = "unified-worker.js"
+name = "figma-component-health-ent"
+main = "backend/unified-worker.js"
 compatibility_date = "2024-01-15"
 
 [vars]
 NODE_ENV = "production"
+
+# Serve frontend assets from dist directory
+[assets]
+directory = "./dist"

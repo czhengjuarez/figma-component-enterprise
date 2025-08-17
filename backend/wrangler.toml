@@ -1,5 +1,5 @@
 name = "figma-component-health-ent"
-main = "backend/unified-worker.js"
+main = "unified-worker-working.js"
 compatibility_date = "2024-01-15"
 
 [vars]

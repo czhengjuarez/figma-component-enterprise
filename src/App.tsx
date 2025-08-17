@@ -33,6 +33,23 @@ interface AnalysisProgress {
   stage: string
 }
 
+interface EnterpriseAnalytics {
+  totalInsertions: number;
+  weeklyInsertions: number;
+  activeTeams: number;
+  adoptionRate: number;
+  usageTrends: Array<{
+    week: string;
+    date: string;
+    insertions: number;
+    detachments?: number;
+  }>;
+  isLoading: boolean;
+  error: string | null;
+  rawData?: any;
+  isEnterpriseRequired?: boolean;
+}
+
 function App() {
   const [componentData, setComponentData] = useState<ComponentData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,37 +63,11 @@ function App() {
   const [isInventoryCollapsed, setIsInventoryCollapsed] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({ current: 0, total: 0, stage: '' });
   const [isEnterpriseMode, setIsEnterpriseMode] = useState(false);
-  const [enterpriseAnalytics, setEnterpriseAnalytics] = useState<{
-    totalInsertions: number;
-    weeklyInsertions: number;
-    activeTeams: number;
-    adoptionRate: number;
-    avgUsageScore: number;
-    usageTrends: Array<{
-      week: string;
-      date: string;
-      insertions: number;
-      detachments: number;
-    }>;
-    rawData?: {
-      teamUsages?: {
-        rows: Array<{
-          team_name: string;
-          insertions: number;
-          detachments: number;
-          week?: string;
-        }>;
-      };
-    };
-    isLoading: boolean;
-    error: string | null;
-    isEnterpriseRequired: boolean;
-  }>({
+  const [enterpriseAnalytics, setEnterpriseAnalytics] = useState<EnterpriseAnalytics>({
     totalInsertions: 0,
     weeklyInsertions: 0,
     activeTeams: 0,
     adoptionRate: 0,
-    avgUsageScore: 0,
     usageTrends: [],
     isLoading: false,
     error: null,
@@ -402,7 +393,7 @@ function App() {
     setIsNotLibraryFile(false)
     
     try {
-      const response = await fetch('/api/analyze', {
+      const response = await fetch('https://figma-component-health-ent.coscient.workers.dev/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -414,7 +405,8 @@ function App() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || errorData.error || `HTTP error! status: ${response.status}`)
       }
 
       const data = await response.json()
@@ -492,24 +484,24 @@ function App() {
       
       // Fetch both summary and trends data in parallel
       const [summaryResponse, trendsResponse] = await Promise.allSettled([
-        fetch('/api/analytics/enterprise-summary', {
+        fetch('https://figma-component-health-ent.coscient.workers.dev/api/analytics/enterprise-summary', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             figmaToken,
-            fileKey: primaryFileKey
+            fileKeys: primaryFileKey
           }),
         }),
-        fetch('/api/analytics/usage-trends', {
+        fetch('https://figma-component-health-ent.coscient.workers.dev/api/analytics/usage-trends', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             figmaToken,
-            fileKey: primaryFileKey
+            fileKeys: primaryFileKey
           }),
         })
       ])
@@ -540,7 +532,6 @@ function App() {
         weeklyInsertions: summaryData.weeklyInsertions || 0,
         activeTeams: summaryData.activeTeams || 0,
         adoptionRate: summaryData.adoptionRate || 0,
-        avgUsageScore: summaryData.avgUsageScore || 0,
         usageTrends: trendsData.trends || [],
         rawData: summaryData.rawData,
         isLoading: false,
@@ -801,7 +792,7 @@ function App() {
 
           {isNotLibraryFile && (
             <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-md mb-4">
-              <AlertCircle className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+              <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
               <div className="text-left">
                 <h4 className="text-sm font-medium text-orange-800 mb-1">No components found in this file</h4>
                 <p className="text-sm text-orange-700 mb-2">
@@ -959,8 +950,7 @@ function App() {
                                 totalInsertions: enterpriseAnalytics.totalInsertions,
                                 weeklyInsertions: enterpriseAnalytics.weeklyInsertions,
                                 activeTeams: enterpriseAnalytics.activeTeams,
-                                adoptionRate: enterpriseAnalytics.adoptionRate,
-                                avgUsageScore: enterpriseAnalytics.avgUsageScore
+                                adoptionRate: enterpriseAnalytics.adoptionRate
                               },
                               usageTrends: enterpriseAnalytics.usageTrends,
                               rawData: enterpriseAnalytics.rawData,
@@ -1097,56 +1087,6 @@ function App() {
                       </div>
                     </div>
 
-                    {/* Average Usage Score - Dedicated Section */}
-                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <svg className="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                          </svg>
-                          <h3 className="text-lg font-semibold text-gray-900">Average Usage Score</h3>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-3xl font-bold text-purple-600">{enterpriseAnalytics.avgUsageScore}</p>
-                          <p className="text-sm text-gray-500">Usage intensity metric</p>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-gray-900 mb-3">Score Criteria</h4>
-                        <div className="grid grid-cols-2 gap-6 text-sm">
-                          <div className="text-left">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                              <span className="font-medium text-gray-700">8.0 - 10.0: Excellent</span>
-                            </div>
-                            <p className="text-gray-600 mb-4">Components average 80+ instances each across files</p>
-                            
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                              <span className="font-medium text-gray-700">5.0 - 7.9: Good</span>
-                            </div>
-                            <p className="text-gray-600">Components average 50-79 instances each</p>
-                          </div>
-                          <div className="text-left">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                              <span className="font-medium text-gray-700">2.0 - 4.9: Moderate</span>
-                            </div>
-                            <p className="text-gray-600 mb-4">Components average 20-49 instances each</p>
-                            
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                              <span className="font-medium text-gray-700">0.0 - 1.9: Low</span>
-                            </div>
-                            <p className="text-gray-600">Components average less than 20 instances each</p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-4 text-left">
-                          Higher scores indicate components are heavily reused across many files, showing strong design system adoption.
-                        </p>
-                      </div>
-                    </div>
                   </>
                 )}
 
@@ -1260,7 +1200,7 @@ function App() {
                             Total: <span className="font-medium text-blue-600">{enterpriseAnalytics.usageTrends.reduce((sum, t) => sum + t.insertions, 0)} insertions</span>
                           </div>
                           <div className="text-gray-600">
-                            <span className="font-medium text-red-600">{enterpriseAnalytics.usageTrends.reduce((sum, t) => sum + t.detachments, 0)} detachments</span>
+                            <span className="font-medium text-red-600">{enterpriseAnalytics.usageTrends.reduce((sum, t) => sum + (t.detachments || 0), 0)} detachments</span>
                           </div>
                         </div>
                       </div>
@@ -1312,23 +1252,20 @@ function App() {
                           
                           console.log('Final processed team data:', teamData);
                           
-                          // Sort by usage and log the sorting
-                          const teamEntries = Object.entries(teamData);
-                          console.log('Team entries before sorting:', teamEntries);
-                          const sortedEntries = teamEntries.sort(([,a], [,b]) => b.insertions - a.insertions);
-                          console.log('Team entries after sorting:', sortedEntries);
-                          
                           // Sort teams by total insertions and take top 6
                           const sortedTeams = Object.entries(teamData)
                             .map(([name, data]) => ({ name, insertions: data.insertions, detachments: data.detachments }))
                             .sort((a, b) => b.insertions - a.insertions)
                             .slice(0, 6);
                           
-                          const maxInsertions = Math.max(...sortedTeams.map(t => t.insertions));
+                          // Calculate total team insertions for percentage calculation
+                          const totalTeamInsertions = sortedTeams.reduce((sum, team) => sum + team.insertions, 0);
+                          console.log('Total team insertions:', totalTeamInsertions);
+                          console.log('Enterprise total insertions:', enterpriseAnalytics.totalInsertions);
                           
                           return sortedTeams.map((team, index) => {
-                            const percentage = maxInsertions > 0 ? Math.round((team.insertions / maxInsertions) * 100) : 0;
-                            const adoptionRate = Math.round((team.insertions / enterpriseAnalytics.totalInsertions) * 100);
+                            const adoptionRate = totalTeamInsertions > 0 ? Math.round((team.insertions / totalTeamInsertions) * 100) : 0;
+                            const percentage = adoptionRate; // Use the same percentage for both display and bar width
                             
                             return (
                               <div key={team.name} className="flex items-center justify-between">

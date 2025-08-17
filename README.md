@@ -1,187 +1,141 @@
 # Figma Component Enterprise Analytics
 
-A comprehensive enterprise-grade analytics platform for Figma design systems with advanced component health scoring, WCAG accessibility compliance analysis, and team usage insights.
+A comprehensive tool for analyzing Figma component libraries with enterprise-grade analytics, providing health metrics, usage insights, team adoption data, and exportable reports for design system management.
+
+**Last Updated**: August 16, 2025
+
+## 🔄 Converting to Standard Version
+
+To convert this enterprise version back to a standard component analysis tool (without enterprise analytics):
+
+### Quick Conversion Steps:
+1. **Hide Enterprise Toggle**: In `src/App.tsx`, find the enterprise mode toggle button and set `style={{ display: 'none' }}` or remove it entirely
+2. **Expand Component List**: In `src/App.tsx`, change `const [isInventoryCollapsed, setIsInventoryCollapsed] = useState(false)` to `useState(false)` to show the component inventory expanded by default
+
+### Detailed Instructions:
+```typescript
+// In src/App.tsx
+
+// Step 1: Hide the enterprise toggle (around line 720-740)
+// Find this section and hide or remove it:
+<button
+  onClick={() => setIsEnterpriseMode(!isEnterpriseMode)}
+  className="..."
+  style={{ display: 'none' }} // Add this line to hide
+>
+  Enterprise Analytics
+</button>
+
+// Step 2: Show component inventory by default (around line 47)
+// Change this line:
+const [isInventoryCollapsed, setIsInventoryCollapsed] = useState(false); // Change true to false
+```
+
+The standard version will then function as a regular component health analyzer without enterprise features, using only the standard Figma API for component analysis.
 
 ## 🚀 Features
 
 ### Core Analytics
-- **Advanced Health Scoring**: 100-point scoring system with accessibility, documentation, and usage metrics
-- **WCAG 2.2 Compliance**: Real-time color contrast analysis via component thumbnails
-- **Enterprise Usage Analytics**: Team adoption, insertion trends, and component lifecycle insights
-- **Multi-file Support**: Analyze entire design system libraries simultaneously
+- **Component Inventory Analysis**: Analyze any Figma file to get a complete component inventory
+- **Health Scoring**: Intelligent scoring based on documentation quality, usage patterns, and maintenance status
+- **Hierarchical Display**: Organized view with base components and expandable variants
+- **CSV Export**: Download detailed reports for further analysis and team sharing
+- **Real-time Thumbnails**: Visual component previews directly from Figma
 
-### Enterprise Enhancements
-- **Team Consolidation**: Unified team usage analytics across 8+ teams
-- **Usage Trends**: Weekly insertion/detachment tracking with 3500-4500 insertion scale
-- **Component Breakdown**: Individual component analytics with team-level adoption data
-- **Realistic Mock Data**: Enterprise-scale data simulation matching live API responses
+### Enterprise Analytics (Figma Enterprise Plans)
+- **Usage Trends**: 4-week historical data showing component insertion/detachment patterns
+- **Team Adoption Metrics**: Track which teams are using components and adoption percentages
+- **Library Analytics Integration**: Real-time data from Figma's Library Analytics API
+- **Adoption Rate Calculation**: Percentage of components actively being used across files
+- **Active Team Tracking**: Monitor component usage across different teams (excluding drafts)
+- **Weekly vs Total Metrics**: Compare current week activity against 4-week totals
 
 ### Technical Features
-- **Real-time Analysis**: Live component health monitoring with progress tracking
-- **Accessibility Excellence**: Comprehensive WCAG 2.2 color contrast analysis
-- **Scalable Architecture**: Unified Cloudflare Worker deployment with Express.js fallback
+- **Unified Worker Architecture**: Single Cloudflare Worker handling both frontend and API
+- **Dual API Support**: Standard Figma API for all users, Library Analytics API for Enterprise
+- **Component Validation**: Automatic detection of published component libraries
+- **Error Handling**: Detailed error messages with actionable guidance
+- **Professional UI**: Clean, modern interface with intuitive navigation
 
-## 📊 Enterprise Analytics Scale
+## 🛠 Tech Stack
 
-This version includes realistic enterprise-scale mock data:
-- **Total Insertions**: 3,500-4,500 (matching live API ~3,936)
-- **Weekly Usage**: 700-1,100 insertions per week
-- **Team Coverage**: Exactly 8 teams (matching live API structure)
-- **Component Count**: 37 total components with realistic health distribution
+- **Frontend**: React + TypeScript + Tailwind CSS v3
+- **Backend**: Cloudflare Workers (unified deployment)
+- **APIs**: Figma REST API v1 + Library Analytics API (Enterprise)
+- **Icons**: Lucide React
+- **Build Tool**: Vite
+- **Deployment**: Cloudflare Workers
 
-## 🛠 Getting Started
+## 📋 Prerequisites
 
-### Prerequisites
+- Node.js 18+ and npm
+- Cloudflare account (for deployment)
+- Figma Personal Access Token (with appropriate scopes)
+- Figma file viewing permissions
+- Figma Enterprise plan (for Library Analytics features)
 
-- Node.js 18+
-- Figma Personal Access Token (with file access permissions)
-- Figma File Key(s) from your design system library
+## 🚀 Quick Start
 
-### Quick Setup
+### 1. Clone and Install
 
-1. **Clone and Install**:
 ```bash
-git clone https://github.com/czhengjuarez/figma-component-enterprise.git
-cd figma-component-enterprise
-npm run setup
+git clone <repository-url>
+cd figma-components
+npm install
+cd backend
+npm install
 ```
 
-2. **Start Development Servers**:
-```bash
-# Backend (port 8787)
-npm run start:backend
+### 2. Local Development Workflow
 
-# Frontend (port 3000) - new terminal
+⚠️ **IMPORTANT**: Due to networking limitations in the local `wrangler dev` environment, the recommended development workflow is:
+
+#### Frontend Development (Recommended)
+```bash
+# Start frontend dev server (uses deployed backend)
 npm run dev
+# Frontend: http://localhost:3002
+# Backend: Uses production deployment automatically
 ```
 
-3. **Access Application**: Open http://localhost:3000
+#### Backend Development (Use Separate Worker)
+⚠️ **CRITICAL WARNING**: Never deploy directly to the production worker during development as it will disrupt the live version.
 
-### Configuration
+**For Backend Changes:**
+1. **Create a separate test worker** in Cloudflare Workers dashboard
+2. **Update `wrangler.toml`** to use your test worker name:
+   ```toml
+   name = "figma-component-health-test-[your-name]"  # Change this!
+   ```
+3. **Deploy to your test worker**:
+   ```bash
+   cd backend
+   wrangler deploy
+   ```
+4. **Update frontend** to use your test worker URL temporarily:
+   ```typescript
+   // In src/App.tsx, change the URLs to your test worker:
+   const response = await fetch('https://your-test-worker.workers.dev/api/analyze', {
+   ```
+5. **Test thoroughly** before deploying to production
+6. **Deploy to production** only when changes are verified
 
-1. **Figma Personal Access Token**:
-   - Figma → Settings → Personal Access Tokens
-   - Generate token with file access permissions
+#### Why This Workflow?
+- Local `wrangler dev` has SSL/networking issues with Figma API
+- Production Cloudflare Workers environment works perfectly
+- Prevents accidental disruption of live production version
+- Allows safe testing of backend changes
 
-2. **File Key Extraction**:
-   - From Figma URL: `figma.com/file/[FILE_KEY]/...`
-   - Use the FILE_KEY portion in the analytics interface
+### 3. Production Deployment
 
-## 🏗 Architecture
-
-### Frontend Stack
-- **React 19** + TypeScript + Vite
-- **Tailwind CSS** for styling
-- **Recharts** for data visualization
-- **Real-time Progress Tracking**
-
-### Backend Stack
-- **Express.js** API server (development)
-- **Cloudflare Workers** (production deployment)
-- **Figma API Integration** with enterprise analytics
-- **WCAG 2.2 Compliance Engine**
-
-### Deployment Options
-- **Local Development**: Express.js server
-- **Production**: Unified Cloudflare Worker
-- **Hybrid**: API + Static asset serving
-
-## 📈 Health Scoring System
-
-### Scoring Methodology (0-100 scale)
-
-**Critical Issues (-50 points each)**:
-- Deprecated component status
-- Broken layout dimensions
-- WCAG 2.2 accessibility violations
-
-**Major Issues (-25 points each)**:
-- Poor/missing documentation (< 10 characters)
-- Missing key interaction variants
-
-**Minor Issues (-10 points each)**:
-- Naming convention violations
-- Missing/broken thumbnails
-- Inconsistent property patterns
-
-**Bonus Points (+10-15 points each)**:
-- Excellent documentation with examples
-- WCAG AAA compliance (15 pts)
-- Design system pattern adherence
-- Complete component structure
-
-### WCAG 2.2 Integration
-- **Real-time Contrast Analysis**: Component thumbnail color extraction
-- **Automated Compliance Scoring**: AA/AAA level detection
-- **Accessibility Excellence Bonus**: Up to 15 additional points
-
-## 🚀 API Endpoints
-
-### Core Analysis
-- `POST /api/analyze` - Component health analysis
-- `GET /api/component/:fileKey/:componentId` - Component details
-
-### Enterprise Analytics
-- `POST /api/analytics/enterprise-summary` - Comprehensive usage metrics
-- `POST /api/analytics/usage-trends` - 4-week trend analysis
-- `POST /api/analytics/component-actions` - Insertion/detachment data
-- `POST /api/analytics/component-usages` - Team adoption metrics
-
-### Health & Status
-- `GET /health` - API health check
-
-## 🔧 Deployment
-
-### Cloudflare Workers (Production)
+**Frontend + Backend (Unified)**:
 ```bash
-npm run deploy
+cd backend
+npm run build-and-deploy
 ```
 
-### Development Environment
+**Backend Only**:
 ```bash
-npm run deploy:dev
+cd backend
+wrangler deploy
 ```
-
-### Local Testing
-```bash
-npm run test:deploy  # Dry run deployment
-```
-
-## 📝 Enterprise Features
-
-### Team Analytics
-- **8-Team Consolidation**: Matches live API team structure
-- **Cross-team Usage Tracking**: Component adoption across teams
-- **Team-specific Metrics**: Individual team performance insights
-
-### Usage Intelligence
-- **Weekly Trend Analysis**: 4-week rolling usage patterns
-- **Component Lifecycle**: First use, peak adoption, deprecation tracking
-- **Insertion/Detachment Ratios**: Component stability metrics
-
-### Accessibility Excellence
-- **WCAG 2.2 Compliance**: Latest accessibility standards
-- **Color Contrast Analysis**: Real-time thumbnail processing
-- **Accessibility Scoring**: Integrated into health metrics
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Issues**: [GitHub Issues](https://github.com/czhengjuarez/figma-component-enterprise/issues)
-- **Documentation**: See `/docs` directory
-- **Enterprise Support**: Contact repository maintainers
-
----
-
-**Enterprise Analytics for Design Systems** - Built with ❤️ for design teams scaling component libraries...
